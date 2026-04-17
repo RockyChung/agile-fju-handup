@@ -24,6 +24,10 @@ type QueueItem = {
   raisedAt: string;
 };
 
+type LoadQueueOptions = {
+  showRefreshing?: boolean;
+};
+
 export default function TeacherCoursePage() {
   const router = useRouter();
   const params = useParams<{ courseId: string }>();
@@ -38,58 +42,64 @@ export default function TeacherCoursePage() {
 
   const queueCountText = useMemo(() => `目前共 ${queue.length} 位舉手`, [queue.length]);
 
-  const loadQueue = useCallback(async () => {
+  const loadQueue = useCallback(async (options?: LoadQueueOptions) => {
     if (!courseId) {
       return;
     }
 
-    setRefreshing(true);
+    const showRefreshing = options?.showRefreshing ?? false;
+    if (showRefreshing) {
+      setRefreshing(true);
+    }
     setErrorMessage(null);
 
-    const { data: handRows, error: handError } = await supabase
-      .from("hand_raises")
-      .select("id, student_id, created_at")
-      .eq("course_id", courseId)
-      .order("created_at", { ascending: true });
+    try {
+      const { data: handRows, error: handError } = await supabase
+        .from("hand_raises")
+        .select("id, student_id, created_at")
+        .eq("course_id", courseId)
+        .order("created_at", { ascending: true });
 
-    if (handError) {
-      setErrorMessage("讀取舉手名單失敗。");
-      setRefreshing(false);
-      return;
+      if (handError) {
+        setErrorMessage("讀取舉手名單失敗。");
+        return;
+      }
+
+      const rows = (handRows ?? []) as HandRaiseRow[];
+      if (rows.length === 0) {
+        setQueue([]);
+        return;
+      }
+
+      const studentIds = Array.from(new Set(rows.map((row) => row.student_id)));
+      const { data: profileRows } = await supabase
+        .from("profiles")
+        .select("id, name, student_id")
+        .in("id", studentIds);
+
+      const profileMap = new Map<string, ProfileRow>();
+      (profileRows ?? []).forEach((profile) => {
+        const item = profile as ProfileRow;
+        profileMap.set(item.id, item);
+      });
+
+      const queueRows = rows.map((row) => {
+        const profile = profileMap.get(row.student_id);
+        return {
+          id: row.id,
+          studentId: row.student_id,
+          studentNo: profile?.student_id ?? "未知學號",
+          studentName: profile?.name ?? "未命名同學",
+          raisedAt: row.created_at,
+        };
+      });
+
+      setQueue(queueRows);
+    } finally {
+      if (showRefreshing) {
+        setRefreshing(false);
+      }
     }
-
-    const rows = (handRows ?? []) as HandRaiseRow[];
-    if (rows.length === 0) {
-      setQueue([]);
-      setRefreshing(false);
-      return;
-    }
-
-    const studentIds = Array.from(new Set(rows.map((row) => row.student_id)));
-    const { data: profileRows } = await supabase
-      .from("profiles")
-      .select("id, name, student_id")
-      .in("id", studentIds);
-
-    const profileMap = new Map<string, ProfileRow>();
-    (profileRows ?? []).forEach((profile) => {
-      const item = profile as ProfileRow;
-      profileMap.set(item.id, item);
-    });
-
-    const queueRows = rows.map((row) => {
-      const profile = profileMap.get(row.student_id);
-      return {
-        id: row.id,
-        studentId: row.student_id,
-        studentNo: profile?.student_id ?? "未知學號",
-        studentName: profile?.name ?? "未命名同學",
-        raisedAt: row.created_at,
-      };
-    });
-
-    setQueue(queueRows);
-    setRefreshing(false);
   }, [courseId]);
 
   useEffect(() => {
@@ -155,6 +165,22 @@ export default function TeacherCoursePage() {
     };
   }, [courseId, loadQueue]);
 
+  useEffect(() => {
+    if (!courseId) {
+      return;
+    }
+
+    // Fallback polling ensures queue still auto-refreshes
+    // if Realtime events are delayed or unavailable.
+    const poller = window.setInterval(() => {
+      void loadQueue();
+    }, 1000);
+
+    return () => {
+      window.clearInterval(poller);
+    };
+  }, [courseId, loadQueue]);
+
   const handleClearQueue = async () => {
     setErrorMessage(null);
     const { error } = await supabase.from("hand_raises").delete().eq("course_id", courseId);
@@ -204,7 +230,7 @@ export default function TeacherCoursePage() {
             <div className="flex gap-2">
               <button
                 type="button"
-                onClick={() => void loadQueue()}
+                onClick={() => void loadQueue({ showRefreshing: true })}
                 className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100"
               >
                 {refreshing ? "更新中..." : "重新整理"}

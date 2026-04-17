@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
@@ -14,8 +14,26 @@ type StudentCourse = {
 export default function StudentDashboardPage() {
   const router = useRouter();
   const [name, setName] = useState("同學");
+  const [studentUserId, setStudentUserId] = useState<string | null>(null);
   const [courses, setCourses] = useState<StudentCourse[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const loadCourses = useCallback(async (userId: string) => {
+    const { data } = await supabase
+      .from("course_students")
+      .select("courses(id, title, course_code, is_active)")
+      .eq("student_id", userId);
+
+    const courseList = (data ?? []).flatMap((row) => {
+      const nested = row.courses as StudentCourse | StudentCourse[] | null;
+      if (nested == null) {
+        return [];
+      }
+      return Array.isArray(nested) ? nested : [nested];
+    });
+
+    setCourses(courseList);
+  }, []);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -50,26 +68,42 @@ export default function StudentDashboardPage() {
       }
 
       setName(profile.name || "同學");
-
-      const { data } = await supabase
-        .from("course_students")
-        .select("courses(id, title, course_code, is_active)")
-        .eq("student_id", user.id);
-
-      const courseList = (data ?? []).flatMap((row) => {
-        const nested = row.courses as StudentCourse | StudentCourse[] | null;
-        if (nested == null) {
-          return [];
-        }
-        return Array.isArray(nested) ? nested : [nested];
-      });
-
-      setCourses(courseList);
+      setStudentUserId(user.id);
+      await loadCourses(user.id);
       setLoading(false);
     };
 
     void bootstrap();
-  }, [router]);
+  }, [loadCourses, router]);
+
+  useEffect(() => {
+    if (!studentUserId) {
+      return;
+    }
+
+    const channel = supabase
+      .channel(`student-dashboard-${studentUserId}`)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "course_students", filter: `student_id=eq.${studentUserId}` },
+        () => {
+          void loadCourses(studentUserId);
+        }
+      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "courses" }, () => {
+        void loadCourses(studentUserId);
+      })
+      .subscribe();
+
+    const poller = window.setInterval(() => {
+      void loadCourses(studentUserId);
+    }, 2000);
+
+    return () => {
+      window.clearInterval(poller);
+      void supabase.removeChannel(channel);
+    };
+  }, [loadCourses, studentUserId]);
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -86,14 +120,23 @@ export default function StudentDashboardPage() {
         <header className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-6">
           <div>
             <h1 className="text-2xl font-black text-slate-800">{name}，你好</h1>
-            <p className="mt-1 text-sm text-slate-500">請選擇老師開課的課程進入舉手頁面。</p>
+            <p className="mt-1 text-sm text-slate-500">請先選課，再進入已加入課程的舉手頁面。</p>
           </div>
-          <button
-            onClick={handleLogout}
-            className="rounded-xl border border-rose-100 px-4 py-2 font-bold text-rose-600 hover:bg-rose-50"
-          >
-            登出
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => router.push("/student/courses")}
+              className="rounded-xl border border-slate-200 px-4 py-2 font-bold text-slate-700 hover:bg-slate-100"
+            >
+              前往選課
+            </button>
+            <button
+              onClick={handleLogout}
+              className="rounded-xl border border-rose-100 px-4 py-2 font-bold text-rose-600 hover:bg-rose-50"
+            >
+              登出
+            </button>
+          </div>
         </header>
 
         <section className="space-y-3">

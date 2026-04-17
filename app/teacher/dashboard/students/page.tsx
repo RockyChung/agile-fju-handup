@@ -11,6 +11,8 @@ type TeacherCourse = {
   course_code: string;
 };
 
+type StudentManageMode = "single" | "batch";
+
 const EMAIL_DOMAIN = "@cloud.fju.edu.tw";
 
 export default function TeacherStudentManagementPage() {
@@ -27,6 +29,7 @@ export default function TeacherStudentManagementPage() {
   const [batchAssignCourseId, setBatchAssignCourseId] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [manageMode, setManageMode] = useState<StudentManageMode>("single");
 
   const fetchCourses = useCallback(async (teacherIdValue: string) => {
     const { data: courseData } = await supabase
@@ -151,10 +154,10 @@ export default function TeacherStudentManagementPage() {
     }
 
     const parsedRows = lines.map((line) => {
-      const columns = line.split(/[,\t]/).map((item) => item.trim());
+      const columns = line.split(/[\s,\t]+/).map((item) => item.trim()).filter(Boolean);
       return {
         studentIdValue: columns[0] || "",
-        studentNameValue: columns[1] || "",
+        studentNameValue: columns.slice(1).join(" "),
       };
     });
 
@@ -234,86 +237,113 @@ export default function TeacherStudentManagementPage() {
           </section>
         )}
 
-        <section className="grid gap-4 lg:grid-cols-2">
-          <form
-            onSubmit={handleCreateSingleStudent}
-            className="space-y-3 rounded-2xl border border-slate-100 bg-white p-5"
-          >
-            <h2 className="text-lg font-bold text-slate-800">單筆建立學生</h2>
-            <input
-              type="text"
-              value={studentId}
-              onChange={(event) => setStudentId(event.target.value)}
-              placeholder="學號"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
-              required
-            />
-            <input
-              type="text"
-              value={studentName}
-              onChange={(event) => setStudentName(event.target.value)}
-              placeholder="姓名"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
-              required
-            />
-            <input
-              type="text"
-              value={studentPassword}
-              onChange={(event) => setStudentPassword(event.target.value)}
-              placeholder="預設密碼（留白=學號）"
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
-            />
-            <select
-              value={singleAssignCourseId}
-              onChange={(event) => setSingleAssignCourseId(event.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black outline-none focus:ring-2 focus:ring-indigo-500"
-            >
-              <option value="">不加入課程</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.title}
-                </option>
-              ))}
-            </select>
+        <section className="space-y-4">
+          <div className="flex gap-2">
             <button
-              type="submit"
-              disabled={savingStudent}
-              className="w-full rounded-xl bg-indigo-600 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+              type="button"
+              onClick={() => setManageMode("single")}
+              className={`rounded-xl px-4 py-2 font-bold ${
+                manageMode === "single"
+                  ? "bg-indigo-600 text-white"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
             >
-              {savingStudent ? "建立中..." : "建立學生"}
+              單筆建立學生
             </button>
-          </form>
+            <button
+              type="button"
+              onClick={() => setManageMode("batch")}
+              className={`rounded-xl px-4 py-2 font-bold ${
+                manageMode === "batch"
+                  ? "bg-indigo-600 text-white"
+                  : "border border-slate-200 bg-white text-slate-700 hover:bg-slate-100"
+              }`}
+            >
+              批次匯入學生
+            </button>
+          </div>
 
-          <form onSubmit={handleBatchImport} className="space-y-3 rounded-2xl border border-slate-100 bg-white p-5">
-            <h2 className="text-lg font-bold text-slate-800">批次匯入學生</h2>
-            <p className="text-xs text-slate-500">每行一筆：學號,姓名（預設密碼為學號）</p>
-            <textarea
-              value={batchRows}
-              onChange={(event) => setBatchRows(event.target.value)}
-              placeholder={`410012345,王小明\n410012346,李小華`}
-              className="h-36 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
-              required
-            />
-            <select
-              value={batchAssignCourseId}
-              onChange={(event) => setBatchAssignCourseId(event.target.value)}
-              className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black outline-none focus:ring-2 focus:ring-indigo-500"
+          {manageMode === "single" ? (
+            <form
+              onSubmit={handleCreateSingleStudent}
+              className="space-y-3 rounded-2xl border border-slate-100 bg-white p-5"
             >
-              <option value="">不加入課程</option>
-              {courses.map((course) => (
-                <option key={course.id} value={course.id}>
-                  {course.title}
-                </option>
-              ))}
-            </select>
-            <button
-              type="submit"
-              disabled={importing}
-              className="w-full rounded-xl bg-indigo-600 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
-            >
-              {importing ? "匯入中..." : "批次匯入"}
-            </button>
-          </form>
+              <h2 className="text-lg font-bold text-slate-800">單筆建立學生</h2>
+              <input
+                type="text"
+                value={studentId}
+                onChange={(event) => setStudentId(event.target.value)}
+                placeholder="學號"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+              <input
+                type="text"
+                value={studentName}
+                onChange={(event) => setStudentName(event.target.value)}
+                placeholder="姓名"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+              <input
+                type="text"
+                value={studentPassword}
+                onChange={(event) => setStudentPassword(event.target.value)}
+                placeholder="預設密碼（留白=學號）"
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+              <select
+                value={singleAssignCourseId}
+                onChange={(event) => setSingleAssignCourseId(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">不加入課程</option>
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.title}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={savingStudent}
+                className="w-full rounded-xl bg-indigo-600 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+              >
+                {savingStudent ? "建立中..." : "建立學生"}
+              </button>
+            </form>
+          ) : (
+            <form onSubmit={handleBatchImport} className="space-y-3 rounded-2xl border border-slate-100 bg-white p-5">
+              <h2 className="text-lg font-bold text-slate-800">批次匯入學生</h2>
+              <p className="text-xs text-slate-500">每行一筆：學號 姓名（預設密碼為學號）</p>
+              <textarea
+                value={batchRows}
+                onChange={(event) => setBatchRows(event.target.value)}
+                placeholder={`410012345 王小明\n410012346 李小華`}
+                className="h-36 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
+                required
+              />
+              <select
+                value={batchAssignCourseId}
+                onChange={(event) => setBatchAssignCourseId(event.target.value)}
+                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black outline-none focus:ring-2 focus:ring-indigo-500"
+              >
+                <option value="">不加入課程</option>
+                {courses.map((course) => (
+                  <option key={course.id} value={course.id}>
+                    {course.title}
+                  </option>
+                ))}
+              </select>
+              <button
+                type="submit"
+                disabled={importing}
+                className="w-full rounded-xl bg-indigo-600 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+              >
+                {importing ? "匯入中..." : "批次匯入"}
+              </button>
+            </form>
+          )}
         </section>
       </div>
     </main>
