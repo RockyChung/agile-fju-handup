@@ -56,9 +56,13 @@ export default function StudentDashboardPage() {
         .select("courses(id, title, course_code, is_active)")
         .eq("student_id", user.id);
 
-      const courseList = (data ?? [])
-        .map((row) => row.courses)
-        .filter((course): course is StudentCourse => Boolean(course));
+      const courseList = (data ?? []).flatMap((row) => {
+        const nested = row.courses as StudentCourse | StudentCourse[] | null;
+        if (nested == null) {
+          return [];
+        }
+        return Array.isArray(nested) ? nested : [nested];
+      });
 
       setCourses(courseList);
       setLoading(false);

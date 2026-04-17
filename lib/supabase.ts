@@ -8,3 +8,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 }
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+
+/** Second client for teacher-driven student signUp: must use a distinct auth storageKey so it does not clash with the main session. */
+export const supabaseIsolated = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    persistSession: false,
+    autoRefreshToken: false,
+    detectSessionInUrl: false,
+    storageKey: "sb-agile-fju-handup-teacher-signup",
+  },
+});
