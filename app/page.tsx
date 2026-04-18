@@ -4,7 +4,7 @@ import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { FJU_EMAIL_DOMAIN, fjuEmailFromStudentId } from "@/lib/fju-auth-email";
-
+//test
 export default function LoginPage() {
   const router = useRouter();
   const [studentId, setStudentId] = useState("");
