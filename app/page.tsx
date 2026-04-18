@@ -95,7 +95,7 @@ export default function LoginPage() {
   return (
     <main className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md rounded-3xl border border-slate-100 bg-white p-8 shadow-xl">
-        <h1 className="text-2xl font-black text-slate-800">輔仁大學上課舉手發問系統</h1>
+        <h1 className="text-2xl font-black text-slate-800">輔仁大學上課舉手發問系統test</h1>
         <p className="mt-2 text-sm text-slate-500">請輸入學號與密碼登入系統。</p>
 
         <form className="mt-6 space-y-4" onSubmit={handleLogin}>
