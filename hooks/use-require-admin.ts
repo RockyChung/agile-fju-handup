@@ -4,17 +4,17 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
-type UseRequireTeacherResult = {
+type UseRequireAdminResult = {
   loading: boolean;
-  teacherId: string | null;
-  teacherName: string;
+  adminId: string | null;
+  adminName: string;
 };
 
-export function useRequireTeacher(): UseRequireTeacherResult {
+export function useRequireAdmin(): UseRequireAdminResult {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [teacherId, setTeacherId] = useState<string | null>(null);
-  const [teacherName, setTeacherName] = useState("老師");
+  const [adminId, setAdminId] = useState<string | null>(null);
+  const [adminName, setAdminName] = useState("管理員");
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -38,23 +38,22 @@ export function useRequireTeacher(): UseRequireTeacherResult {
         return;
       }
 
-      if (profile.role === "admin") {
-        router.replace("/admin/dashboard");
+      if (profile.role !== "admin") {
+        if (profile.role === "teacher") {
+          router.replace("/teacher/dashboard");
+        } else {
+          router.replace("/student/dashboard");
+        }
         return;
       }
 
-      if (profile.role !== "teacher") {
-        router.replace("/student/dashboard");
-        return;
-      }
-
-      setTeacherId(user.id);
-      setTeacherName(profile.name || "老師");
+      setAdminId(user.id);
+      setAdminName(profile.name || "管理員");
       setLoading(false);
     };
 
     void bootstrap();
   }, [router]);
 
-  return { loading, teacherId, teacherName };
+  return { loading, adminId, adminName };
 }

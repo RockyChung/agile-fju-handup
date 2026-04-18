@@ -68,7 +68,10 @@ export default function TeacherCourseManagementPage() {
     if (!teacherId) {
       return;
     }
-    void fetchCourses(teacherId);
+    const id = requestAnimationFrame(() => {
+      void fetchCourses(teacherId);
+    });
+    return () => cancelAnimationFrame(id);
   }, [fetchCourses, teacherId]);
 
   const handleCreateCourse = async (event: FormEvent) => {

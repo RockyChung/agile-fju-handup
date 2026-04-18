@@ -1,52 +1,25 @@
 "use client";
 
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { FormEvent, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase, supabaseIsolated } from "@/lib/supabase";
+import { fjuEmailFromStudentId } from "@/lib/fju-auth-email";
+import { supabaseIsolated } from "@/lib/supabase";
 import { useRequireTeacher } from "@/hooks/use-require-teacher";
-
-type TeacherCourse = {
-  id: string;
-  title: string;
-  course_code: string;
-};
 
 type StudentManageMode = "single" | "batch";
 
-const EMAIL_DOMAIN = "@cloud.fju.edu.tw";
-
 export default function TeacherStudentManagementPage() {
   const router = useRouter();
-  const { loading, teacherId } = useRequireTeacher();
-  const [courses, setCourses] = useState<TeacherCourse[]>([]);
+  const { loading } = useRequireTeacher();
   const [savingStudent, setSavingStudent] = useState(false);
   const [importing, setImporting] = useState(false);
   const [studentId, setStudentId] = useState("");
   const [studentName, setStudentName] = useState("");
   const [studentPassword, setStudentPassword] = useState("");
-  const [singleAssignCourseId, setSingleAssignCourseId] = useState<string>("");
   const [batchRows, setBatchRows] = useState("");
-  const [batchAssignCourseId, setBatchAssignCourseId] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [manageMode, setManageMode] = useState<StudentManageMode>("single");
-
-  const fetchCourses = useCallback(async (teacherIdValue: string) => {
-    const { data: courseData } = await supabase
-      .from("courses")
-      .select("id, title, course_code")
-      .eq("teacher_id", teacherIdValue)
-      .order("created_at", { ascending: false });
-
-    setCourses(courseData ?? []);
-  }, []);
-
-  useEffect(() => {
-    if (!teacherId) {
-      return;
-    }
-    void fetchCourses(teacherId);
-  }, [fetchCourses, teacherId]);
 
   const normalizeStudentId = (value: string) => value.trim().replace(/\s+/g, "");
 
@@ -54,19 +27,17 @@ export default function TeacherStudentManagementPage() {
     studentIdValue,
     studentNameValue,
     passwordValue,
-    courseId,
   }: {
     studentIdValue: string;
     studentNameValue: string;
     passwordValue: string;
-    courseId?: string;
   }) => {
     const normalizedStudentId = normalizeStudentId(studentIdValue);
     if (!normalizedStudentId) {
       throw new Error("學號不可為空。");
     }
 
-    const email = `${normalizedStudentId}${EMAIL_DOMAIN}`;
+    const email = fjuEmailFromStudentId(normalizedStudentId);
     const { data: signUpData, error: signUpError } = await supabaseIsolated.auth.signUp({
       email,
       password: passwordValue,
@@ -95,17 +66,6 @@ export default function TeacherStudentManagementPage() {
     if (profileError) {
       throw new Error(`學號 ${normalizedStudentId} 建立失敗（profile 寫入失敗）。`);
     }
-
-    if (courseId) {
-      const { error: courseStudentError } = await supabase.from("course_students").upsert({
-        course_id: courseId,
-        student_id: user.id,
-      });
-
-      if (courseStudentError) {
-        throw new Error(`學號 ${normalizedStudentId} 已建立，但加入課程失敗。`);
-      }
-    }
   };
 
   const handleCreateSingleStudent = async (event: FormEvent) => {
@@ -125,7 +85,6 @@ export default function TeacherStudentManagementPage() {
         studentIdValue: studentId,
         studentNameValue: studentName,
         passwordValue: defaultPassword,
-        courseId: singleAssignCourseId || undefined,
       });
       setStudentId("");
       setStudentName("");
@@ -177,7 +136,6 @@ export default function TeacherStudentManagementPage() {
           studentIdValue: row.studentIdValue,
           studentNameValue: row.studentNameValue,
           passwordValue,
-          courseId: batchAssignCourseId || undefined,
         });
         successCount += 1;
       } catch (error) {
@@ -211,7 +169,7 @@ export default function TeacherStudentManagementPage() {
         <header className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-6">
           <div>
             <h1 className="text-2xl font-black text-slate-800">學生資料管理</h1>
-            <p className="mt-1 text-sm text-slate-500">單筆建立學生與整批匯入學生。</p>
+            <p className="mt-1 text-sm text-slate-500">單筆建立學生與整批匯入學生；選課由學生於選課頁面自行加入。</p>
           </div>
           <button
             type="button"
@@ -292,18 +250,6 @@ export default function TeacherStudentManagementPage() {
                 placeholder="預設密碼（留白=學號）"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
               />
-              <select
-                value={singleAssignCourseId}
-                onChange={(event) => setSingleAssignCourseId(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="">不加入課程</option>
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.title}
-                  </option>
-                ))}
-              </select>
               <button
                 type="submit"
                 disabled={savingStudent}
@@ -323,18 +269,6 @@ export default function TeacherStudentManagementPage() {
                 className="h-36 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
                 required
               />
-              <select
-                value={batchAssignCourseId}
-                onChange={(event) => setBatchAssignCourseId(event.target.value)}
-                className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="">不加入課程</option>
-                {courses.map((course) => (
-                  <option key={course.id} value={course.id}>
-                    {course.title}
-                  </option>
-                ))}
-              </select>
               <button
                 type="submit"
                 disabled={importing}

@@ -57,6 +57,11 @@ export default function StudentDashboardPage() {
         return;
       }
 
+      if (profile.role === "admin") {
+        router.replace("/admin/dashboard");
+        return;
+      }
+
       if (profile.role === "teacher") {
         router.replace("/teacher/dashboard");
         return;

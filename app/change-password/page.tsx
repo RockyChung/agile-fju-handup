@@ -34,6 +34,11 @@ export default function ChangePasswordPage() {
         return;
       }
 
+      if (profile.role === "admin") {
+        router.replace("/admin/dashboard");
+        return;
+      }
+
       if (profile.role === "teacher") {
         router.replace("/teacher/dashboard");
         return;
@@ -98,8 +103,17 @@ export default function ChangePasswordPage() {
     setSuccessMessage("密碼更新完成，將前往學生首頁。");
     setLoading(false);
 
-    setTimeout(() => {
-      router.push("/student/dashboard");
+    setTimeout(async () => {
+      const { data: p } = await supabase
+        .from("profiles")
+        .select("role")
+        .eq("id", user.id)
+        .single();
+      if (p?.role === "admin") {
+        router.push("/admin/dashboard");
+      } else {
+        router.push("/student/dashboard");
+      }
     }, 900);
   };
 
