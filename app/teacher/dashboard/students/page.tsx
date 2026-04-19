@@ -21,6 +21,7 @@ export default function TeacherStudentManagementPage() {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [manageMode, setManageMode] = useState<StudentManageMode>("single");
 
+  // ... (保留原本的 createStudentRecord, handleCreateSingleStudent, handleBatchImport 邏輯)
   const normalizeStudentId = (value: string) => value.trim().replace(/\s+/g, "");
 
   const createStudentRecord = async ({
@@ -166,20 +167,31 @@ export default function TeacherStudentManagementPage() {
   return (
     <main className="min-h-screen bg-slate-50 p-6">
       <div className="mx-auto max-w-5xl space-y-6">
-        <header className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-6">
+        <header className="flex items-center justify-between rounded-2xl border border-slate-100 bg-white p-6 shadow-sm">
           <div>
             <h1 className="text-2xl font-black text-slate-800">學生資料管理</h1>
-            <p className="mt-1 text-sm text-slate-500">單筆建立學生與整批匯入學生；選課由學生於選課頁面自行加入。</p>
+            <p className="mt-1 text-sm text-slate-500">管理學籍資料與課堂分組配置。</p>
           </div>
-          <button
-            type="button"
-            onClick={() => router.push("/teacher/dashboard")}
-            className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100"
-          >
-            回管理首頁
-          </button>
+          <div className="flex gap-3">
+            {/* 新增的學生分組按鈕 */}
+            <button
+              type="button"
+              onClick={() => router.push("/teacher/dashboard/student-group")}
+              className="rounded-xl bg-indigo-50 px-4 py-2 font-bold text-indigo-600 hover:bg-indigo-100 transition-colors border border-indigo-100 flex items-center gap-2"
+            >
+              <span>👥</span> 學生分組
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/teacher/dashboard")}
+              className="rounded-xl border border-slate-200 px-4 py-2 font-semibold text-slate-700 hover:bg-slate-100 transition-colors"
+            >
+              回管理首頁
+            </button>
+          </div>
         </header>
 
+        {/* ... (其餘原本的 errorMessage, successMessage 以及表單邏輯保持不變) */}
         {(errorMessage || successMessage) && (
           <section className="space-y-2">
             {errorMessage && (
@@ -266,7 +278,7 @@ export default function TeacherStudentManagementPage() {
                 value={batchRows}
                 onChange={(event) => setBatchRows(event.target.value)}
                 placeholder={`410012345 王小明\n410012346 李小華`}
-                className="h-36 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
+                className="h-36 find-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
                 required
               />
               <button

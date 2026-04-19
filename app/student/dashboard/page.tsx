@@ -19,18 +19,28 @@ export default function StudentDashboardPage() {
   const [loading, setLoading] = useState(true);
 
   const loadCourses = useCallback(async (userId: string) => {
-    const { data } = await supabase
+    // 明確指定透過 course_id 關聯 courses 表
+    const { data, error } = await supabase
       .from("course_students")
-      .select("courses(id, title, course_code, is_active)")
+      .select(`
+        course_id,
+        courses!course_students_course_id_fkey (
+          id, 
+          title, 
+          course_code, 
+          is_active
+        )
+      `)
       .eq("student_id", userId);
 
-    const courseList = (data ?? []).flatMap((row) => {
-      const nested = row.courses as StudentCourse | StudentCourse[] | null;
-      if (nested == null) {
-        return [];
-      }
-      return Array.isArray(nested) ? nested : [nested];
-    });
+    if (error) {
+      console.error("載入課程失敗:", error);
+      return;
+    }
+
+    const courseList = (data ?? [])
+      .map((row: any) => row.courses)
+      .filter((c) => c !== null);
 
     setCourses(courseList);
   }, []);

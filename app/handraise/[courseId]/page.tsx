@@ -136,18 +136,21 @@ export default function HandRaisePage() {
         return;
       }
 
-      const { data: joinedCourse } = await supabase
+      // 修正點：course_students 沒 id 欄位，改選取 course_id 或 student_id 做存在檢查
+      const { data: joinedCourse, error: joinError } = await supabase
         .from("course_students")
-        .select("id")
+        .select("course_id")
         .eq("course_id", courseId)
         .eq("student_id", user.id)
-        .single();
+        .maybeSingle(); // 使用 maybeSingle 避免找不到時報錯
 
-      if (!joinedCourse) {
+      if (!joinedCourse || joinError) {
+        console.error("尚未加入此課程或權限不足");
         router.replace("/student/dashboard");
         return;
       }
 
+      // 抓取課程資訊並確認是否啟動
       const { data: course } = await supabase
         .from("courses")
         .select("title, is_active")
