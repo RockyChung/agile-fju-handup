@@ -1,0 +1,80 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  admin
+  teacher
+  student
+}
+
+model User {
+  id                 String   @id @default(uuid()) @db.Uuid
+  studentId          String   @unique @map("student_id")
+  email              String   @unique
+  passwordHash       String   @map("password_hash")
+  name               String?
+  role               Role
+  mustChangePassword Boolean  @default(false) @map("must_change_password")
+  createdAt          DateTime @default(now()) @map("created_at")
+  updatedAt          DateTime @updatedAt @map("updated_at")
+
+  taughtCourses  Course[]       @relation("TeacherCourses")
+  courseStudents CourseStudent[]
+  handRaises     HandRaise[]
+
+  @@map("users")
+  @@index([role], map: "idx_users_role")
+}
+
+model Course {
+  id         String   @id @default(uuid()) @db.Uuid
+  title      String
+  courseCode String   @map("course_code")
+  isActive   Boolean  @default(false) @map("is_active")
+  teacherId  String   @map("teacher_id") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  teacher    User            @relation("TeacherCourses", fields: [teacherId], references: [id], onDelete: Cascade)
+  students   CourseStudent[]
+  handRaises HandRaise[]
+
+  @@unique([teacherId, courseCode], map: "courses_teacher_id_course_code_key")
+  @@index([teacherId], map: "idx_courses_teacher")
+  @@index([teacherId, isActive], map: "idx_courses_active")
+  @@map("courses")
+}
+
+model CourseStudent {
+  courseId   String   @map("course_id") @db.Uuid
+  studentId  String   @map("student_id") @db.Uuid
+  groupName  String?  @map("group_name")
+  isLeader   Boolean  @default(false) @map("is_leader")
+  enrolledAt DateTime @default(now()) @map("enrolled_at")
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, studentId])
+  @@index([studentId], map: "idx_course_students_student")
+  @@map("course_students")
+}
+
+model HandRaise {
+  id        String   @id @default(uuid()) @db.Uuid
+  courseId  String   @map("course_id") @db.Uuid
+  studentId String   @map("student_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId], map: "hand_raises_course_id_student_id_key")
+  @@index([courseId, createdAt], map: "idx_hand_raises_course_order")
+  @@map("hand_raises")
+}
