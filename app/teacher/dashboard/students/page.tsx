@@ -1,37 +1,79 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { fjuEmailFromStudentId } from "@/lib/fju-auth-email";
-import { supabaseIsolated } from "@/lib/supabase";
+import { supabaseIsolated } from "@/lib/supabase"; // 關鍵：改回使用隔離的客戶端
 import { useRequireTeacher } from "@/hooks/use-require-teacher";
 
 type StudentManageMode = "single" | "batch";
 
+interface Course {
+  id: string;
+  title: string;
+  course_code: string;
+}
+
 export default function TeacherStudentManagementPage() {
   const router = useRouter();
-  const { loading } = useRequireTeacher();
+  const { loading, teacherId } = useRequireTeacher();
+  
   const [savingStudent, setSavingStudent] = useState(false);
   const [importing, setImporting] = useState(false);
   const [studentId, setStudentId] = useState("");
   const [studentName, setStudentName] = useState("");
   const [studentPassword, setStudentPassword] = useState("");
+  
+  const [selectedCourseId, setSelectedCourseId] = useState("");
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loadingCourses, setLoadingCourses] = useState(false);
+
   const [batchRows, setBatchRows] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [manageMode, setManageMode] = useState<StudentManageMode>("single");
 
-  // ... (保留原本的 createStudentRecord, handleCreateSingleStudent, handleBatchImport 邏輯)
+  // 使用 supabaseIsolated 獲取課程資訊，確保一致性
+  const fetchCourses = useCallback(async (tId: string) => {
+    setLoadingCourses(true);
+    const { data, error } = await supabaseIsolated
+      .from("courses")
+      .select("*")
+      .eq("teacher_id", tId);
+    
+    if (error) {
+      console.error("載入課程失敗:", error.message);
+    } else {
+      const normalized = (data ?? []).map((row: any) => ({
+        id: String(row.id),
+        title: String(row.title || "未命名課程"),
+        course_code: String(row.course_code || "未設定代碼"),
+      }));
+      setCourses(normalized);
+    }
+    setLoadingCourses(false);
+  }, []);
+
+  useEffect(() => {
+    if (!teacherId) return;
+    const frameId = requestAnimationFrame(() => {
+      void fetchCourses(teacherId);
+    });
+    return () => cancelAnimationFrame(frameId);
+  }, [fetchCourses, teacherId]);
+
   const normalizeStudentId = (value: string) => value.trim().replace(/\s+/g, "");
 
   const createStudentRecord = async ({
     studentIdValue,
     studentNameValue,
     passwordValue,
+    courseId,
   }: {
     studentIdValue: string;
     studentNameValue: string;
     passwordValue: string;
+    courseId?: string;
   }) => {
     const normalizedStudentId = normalizeStudentId(studentIdValue);
     if (!normalizedStudentId) {
@@ -39,6 +81,8 @@ export default function TeacherStudentManagementPage() {
     }
 
     const email = fjuEmailFromStudentId(normalizedStudentId);
+    
+    // 使用 supabaseIsolated 建立帳號，這不會影響老師目前的登入狀態
     const { data: signUpData, error: signUpError } = await supabaseIsolated.auth.signUp({
       email,
       password: passwordValue,
@@ -48,7 +92,7 @@ export default function TeacherStudentManagementPage() {
       if (signUpError.message === "User already registered") {
         throw new Error(`學號 ${normalizedStudentId} 已經存在。`);
       }
-      throw new Error(`建立學號 ${normalizedStudentId} 失敗。`);
+      throw new Error(`建立學號 ${normalizedStudentId} 失敗：${signUpError.message}`);
     }
 
     const user = signUpData.user;
@@ -66,6 +110,17 @@ export default function TeacherStudentManagementPage() {
 
     if (profileError) {
       throw new Error(`學號 ${normalizedStudentId} 建立失敗（profile 寫入失敗）。`);
+    }
+
+    if (courseId) {
+      const { error: mappingError } = await supabaseIsolated.from("course_students").insert({
+        course_id: courseId,
+        student_id: user.id,
+      });
+
+      if (mappingError) {
+        throw new Error(`帳號建立成功，但加入課程失敗（${mappingError.message}）。`);
+      }
     }
   };
 
@@ -86,10 +141,12 @@ export default function TeacherStudentManagementPage() {
         studentIdValue: studentId,
         studentNameValue: studentName,
         passwordValue: defaultPassword,
+        courseId: selectedCourseId || undefined,
       });
       setStudentId("");
       setStudentName("");
       setStudentPassword("");
+      setSelectedCourseId(""); 
       setSuccessMessage("學生建立完成，並已設定首次登入需改密碼。");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "建立學生失敗。");
@@ -173,7 +230,6 @@ export default function TeacherStudentManagementPage() {
             <p className="mt-1 text-sm text-slate-500">管理學籍資料與課堂分組配置。</p>
           </div>
           <div className="flex gap-3">
-            {/* 新增的學生分組按鈕 */}
             <button
               type="button"
               onClick={() => router.push("/teacher/dashboard/student-group")}
@@ -191,7 +247,6 @@ export default function TeacherStudentManagementPage() {
           </div>
         </header>
 
-        {/* ... (其餘原本的 errorMessage, successMessage 以及表單邏輯保持不變) */}
         {(errorMessage || successMessage) && (
           <section className="space-y-2">
             {errorMessage && (
@@ -262,10 +317,27 @@ export default function TeacherStudentManagementPage() {
                 placeholder="預設密碼（留白=學號）"
                 className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
               />
+              
+              <div className="space-y-1">
+                <p className="text-xs font-bold text-slate-400 ml-1">選擇加入課程 (選填)</p>
+                <select
+                  value={selectedCourseId}
+                  onChange={(e) => setSelectedCourseId(e.target.value)}
+                  className="w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black outline-none focus:ring-2 focus:ring-indigo-500 cursor-pointer"
+                >
+                  <option value="">-- 僅建立帳號，暫不加入課堂 --</option>
+                  {loadingCourses ? (
+                    <option disabled>讀取課程中...</option>
+                  ) : courses.map((c) => (
+                    <option key={c.id} value={c.id}>[{c.course_code}] {c.title}</option>
+                  ))}
+                </select>
+              </div>
+
               <button
                 type="submit"
                 disabled={savingStudent}
-                className="w-full rounded-xl bg-indigo-600 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+                className="w-full rounded-xl bg-indigo-600 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300 transition-colors"
               >
                 {savingStudent ? "建立中..." : "建立學生"}
               </button>
@@ -278,13 +350,13 @@ export default function TeacherStudentManagementPage() {
                 value={batchRows}
                 onChange={(event) => setBatchRows(event.target.value)}
                 placeholder={`410012345 王小明\n410012346 李小華`}
-                className="h-36 find-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500"
+                className="h-36 w-full rounded-xl border border-slate-200 bg-slate-50 px-4 py-2.5 text-black placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-indigo-500 font-mono text-sm"
                 required
               />
               <button
                 type="submit"
                 disabled={importing}
-                className="w-full rounded-xl bg-indigo-600 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300"
+                className="w-full rounded-xl bg-indigo-600 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:bg-slate-300 transition-colors"
               >
                 {importing ? "匯入中..." : "批次匯入"}
               </button>
