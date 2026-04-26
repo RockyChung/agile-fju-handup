@@ -7,6 +7,9 @@ const loginBodySchema = z.object({
   studentId: z.string().trim().min(1, "studentId is required"),
   password: z.string().min(1, "password is required"),
 });
+const changePasswordBodySchema = z.object({
+  newPassword: z.string().min(8, "newPassword must be at least 8 chars"),
+});
 
 export const authRoutes: FastifyPluginAsync = async (app) => {
   app.post("/login", async (request, reply) => {
@@ -99,5 +102,32 @@ export const authRoutes: FastifyPluginAsync = async (app) => {
     return {
       roles: Object.values(Role),
     };
+  });
+
+  app.patch("/change-password", { preHandler: app.authenticate }, async (request, reply) => {
+    const authUser = request.authUser;
+    if (!authUser) {
+      return reply.status(401).send({ message: "Unauthorized" });
+    }
+
+    const parsed = changePasswordBodySchema.safeParse(request.body);
+    if (!parsed.success) {
+      return reply.status(400).send({
+        message: "Validation failed",
+        issues: parsed.error.issues,
+      });
+    }
+
+    const passwordHash = await bcrypt.hash(parsed.data.newPassword, 10);
+
+    await app.prisma.user.update({
+      where: { id: authUser.id },
+      data: {
+        passwordHash,
+        mustChangePassword: false,
+      },
+    });
+
+    return reply.send({ ok: true });
   });
 };

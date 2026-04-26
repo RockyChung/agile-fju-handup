@@ -33,6 +33,7 @@ type QueueResponse = {
     courseCode: string;
     isActive: boolean;
     teacherId: string;
+    reportOrder: string[];
   };
   queue: {
     id: string;
@@ -57,6 +58,7 @@ export default function TeacherCoursePage() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [reportOrder, setReportOrder] = useState<string[]>([]);
 
   const queueCountText = useMemo(() => `目前共 ${queue.length} 位舉手`, [queue.length]);
 
@@ -97,6 +99,7 @@ export default function TeacherCoursePage() {
 
         const json = (await response.json()) as QueueResponse;
         setCourseTitle(json.course.title || "課程");
+        setReportOrder(json.course.reportOrder ?? []);
         setQueue(
           json.queue.map((row) => ({
             id: row.id,
@@ -248,6 +251,9 @@ export default function TeacherCoursePage() {
             <div>
               <h1 className="text-2xl font-black text-slate-800">{courseTitle} - 課程頁面</h1>
               <p className="mt-1 text-sm text-slate-500">學生舉手後會依照先後順序顯示在下方名單。</p>
+              <p className="mt-1 text-sm font-semibold text-indigo-600">
+                報告順序：{reportOrder.length > 0 ? reportOrder.join(" → ") : "尚未設定"}
+              </p>
             </div>
             <div className="flex gap-2">
               <button

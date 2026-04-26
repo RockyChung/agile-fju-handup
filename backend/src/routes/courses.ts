@@ -1,10 +1,27 @@
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 
+const reportOrderSchema = z.array(z.string().trim().min(1).max(80)).superRefine((list, ctx) => {
+  const seen = new Set<string>();
+  for (let index = 0; index < list.length; index += 1) {
+    const item = list[index]!;
+    if (seen.has(item)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "reportOrder contains duplicate group names",
+        path: [index],
+      });
+      return;
+    }
+    seen.add(item);
+  }
+});
+
 const courseCreateSchema = z.object({
   title: z.string().trim().min(1, "title is required"),
   courseCode: z.string().trim().min(1, "courseCode is required"),
   isActive: z.boolean().optional().default(false),
+  reportOrder: reportOrderSchema.optional().default([]),
   teacherId: z.string().uuid().optional(),
 });
 
@@ -13,6 +30,7 @@ const courseUpdateSchema = z
     title: z.string().trim().min(1).optional(),
     courseCode: z.string().trim().min(1).optional(),
     isActive: z.boolean().optional(),
+    reportOrder: reportOrderSchema.optional(),
     teacherId: z.string().uuid().optional(),
   })
   .refine((payload) => Object.keys(payload).length > 0, {
@@ -108,6 +126,7 @@ export const courseRoutes: FastifyPluginAsync = async (app) => {
           title: payload.title,
           courseCode: payload.courseCode,
           isActive: payload.isActive,
+          reportOrder: payload.reportOrder,
           teacherId,
         },
       });
@@ -151,11 +170,13 @@ export const courseRoutes: FastifyPluginAsync = async (app) => {
       title?: string;
       courseCode?: string;
       isActive?: boolean;
+      reportOrder?: string[];
       teacherId?: string;
     } = {
       title: body.data.title,
       courseCode: body.data.courseCode,
       isActive: body.data.isActive,
+      reportOrder: body.data.reportOrder,
     };
 
     if (authUser.role === "admin" && body.data.teacherId) {

@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { clearBackendToken, getBackendApiBaseUrl, getBackendToken } from "@/lib/backend-auth";
 
 type CourseRow = {
   id: string;
   title: string;
-  course_code: string;
-  is_active: boolean;
+  courseCode: string;
+  isActive: boolean;
 };
 
 export default function StudentCoursesPage() {
@@ -23,46 +23,48 @@ export default function StudentCoursesPage() {
 
   const enrolledSet = useMemo(() => new Set(enrolledIds), [enrolledIds]);
 
-  const loadData = useCallback(async (userId: string) => {
-    const [{ data: allCourses, error: coursesError }, { data: enrolledRows, error: enrolledError }] =
-      await Promise.all([
-        supabase.from("courses").select("id, title, course_code, is_active"),
-        supabase.from("course_students").select("course_id").eq("student_id", userId),
-      ]);
-
-    if (coursesError) {
+  const loadData = useCallback(async (token: string) => {
+    const response = await fetch(`${getBackendApiBaseUrl()}/courses`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!response.ok) {
       setErrorMessage("讀取課程清單失敗。");
       return;
     }
 
-    if (enrolledError) {
-      setErrorMessage("讀取已加入課程失敗。");
-      return;
-    }
-
-    setCourses((allCourses ?? []) as CourseRow[]);
-    setEnrolledIds((enrolledRows ?? []).map((row) => String(row.course_id)));
+    const json = (await response.json()) as { courses?: CourseRow[] };
+    const allCourses = json.courses ?? [];
+    setCourses(allCourses);
+    setEnrolledIds(allCourses.map((row) => row.id));
     setErrorMessage(null);
   }, []);
 
   useEffect(() => {
     const bootstrap = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
+      const token = getBackendToken();
+      if (!token) {
         router.replace("/");
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, must_change_password")
-        .eq("id", user.id)
-        .single();
-
+      const meResponse = await fetch(`${getBackendApiBaseUrl()}/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!meResponse.ok) {
+        clearBackendToken();
+        router.replace("/");
+        return;
+      }
+      const me = (await meResponse.json()) as {
+        user?: { id: string; role: "admin" | "teacher" | "student"; mustChangePassword: boolean };
+      };
+      const profile = me.user;
       if (!profile) {
+        clearBackendToken();
         router.replace("/");
         return;
       }
@@ -77,13 +79,13 @@ export default function StudentCoursesPage() {
         return;
       }
 
-      if (profile.must_change_password) {
+      if (profile.mustChangePassword) {
         router.replace("/change-password");
         return;
       }
 
-      setStudentId(user.id);
-      await loadData(user.id);
+      setStudentId(profile.id);
+      await loadData(token);
       setLoading(false);
     };
 
@@ -100,17 +102,24 @@ export default function StudentCoursesPage() {
     setErrorMessage(null);
     setSuccessMessage(null);
 
-    const { error } = await supabase.from("course_students").insert({
-      course_id: courseId,
-      student_id: studentId,
+    const token = getBackendToken();
+    if (!token) {
+      setErrorMessage("登入資訊已失效，請重新登入。");
+      setSavingCourseId(null);
+      return;
+    }
+
+    const response = await fetch(`${getBackendApiBaseUrl()}/courses/${courseId}/students`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({}),
     });
 
-    if (error) {
-      if (error.code === "23505") {
-        setErrorMessage("你已加入這門課程。");
-      } else {
-        setErrorMessage("加入課程失敗，請稍後再試。");
-      }
+    if (!response.ok) {
+      setErrorMessage("加入課程失敗，請稍後再試。");
       setSavingCourseId(null);
       return;
     }
@@ -171,9 +180,9 @@ export default function StudentCoursesPage() {
                 >
                   <div>
                     <h2 className="text-lg font-bold text-slate-800">{course.title}</h2>
-                    <p className="mt-1 text-sm text-slate-500">{course.course_code}</p>
+                    <p className="mt-1 text-sm text-slate-500">{course.courseCode}</p>
                     <p className="mt-2 text-xs font-semibold text-slate-500">
-                      {course.is_active ? "老師已開課" : "老師尚未開課"}
+                      {course.isActive ? "老師已開課" : "老師尚未開課"}
                     </p>
                   </div>
 

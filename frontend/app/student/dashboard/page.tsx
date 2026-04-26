@@ -2,13 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { clearBackendToken, getBackendApiBaseUrl, getBackendToken } from "@/lib/backend-auth";
 
 type StudentCourse = {
   id: string;
   title: string;
-  course_code: string;
-  is_active: boolean;
+  courseCode: string;
+  isActive: boolean;
 };
 
 export default function StudentDashboardPage() {
@@ -18,41 +18,49 @@ export default function StudentDashboardPage() {
   const [courses, setCourses] = useState<StudentCourse[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadCourses = useCallback(async (userId: string) => {
-    const { data } = await supabase
-      .from("course_students")
-      .select("courses(id, title, course_code, is_active)")
-      .eq("student_id", userId);
-
-    const courseList = (data ?? []).flatMap((row) => {
-      const nested = row.courses as StudentCourse | StudentCourse[] | null;
-      if (nested == null) {
-        return [];
-      }
-      return Array.isArray(nested) ? nested : [nested];
+  const loadCourses = useCallback(async (token: string) => {
+    const response = await fetch(`${getBackendApiBaseUrl()}/courses`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
     });
-
-    setCourses(courseList);
+    if (!response.ok) {
+      return;
+    }
+    const json = (await response.json()) as { courses?: StudentCourse[] };
+    setCourses(json.courses ?? []);
   }, []);
 
   useEffect(() => {
     const bootstrap = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
+      const token = getBackendToken();
+      if (!token) {
         router.replace("/");
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("name, role, must_change_password")
-        .eq("id", user.id)
-        .single();
+      const response = await fetch(`${getBackendApiBaseUrl()}/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        clearBackendToken();
+        router.replace("/");
+        return;
+      }
+      const json = (await response.json()) as {
+        user?: {
+          id: string;
+          name: string | null;
+          role: "admin" | "teacher" | "student";
+          mustChangePassword: boolean;
+        };
+      };
+      const profile = json.user;
 
       if (!profile) {
+        clearBackendToken();
         router.replace("/");
         return;
       }
@@ -67,14 +75,14 @@ export default function StudentDashboardPage() {
         return;
       }
 
-      if (profile.must_change_password) {
+      if (profile.mustChangePassword) {
         router.replace("/change-password");
         return;
       }
 
       setName(profile.name || "同學");
-      setStudentUserId(user.id);
-      await loadCourses(user.id);
+      setStudentUserId(profile.id);
+      await loadCourses(token);
       setLoading(false);
     };
 
@@ -86,32 +94,21 @@ export default function StudentDashboardPage() {
       return;
     }
 
-    const channel = supabase
-      .channel(`student-dashboard-${studentUserId}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "course_students", filter: `student_id=eq.${studentUserId}` },
-        () => {
-          void loadCourses(studentUserId);
-        }
-      )
-      .on("postgres_changes", { event: "*", schema: "public", table: "courses" }, () => {
-        void loadCourses(studentUserId);
-      })
-      .subscribe();
-
     const poller = window.setInterval(() => {
-      void loadCourses(studentUserId);
+      const token = getBackendToken();
+      if (!token) {
+        return;
+      }
+      void loadCourses(token);
     }, 2000);
 
     return () => {
       window.clearInterval(poller);
-      void supabase.removeChannel(channel);
     };
   }, [loadCourses, studentUserId]);
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
+    clearBackendToken();
     router.push("/");
   };
 
@@ -157,15 +154,15 @@ export default function StudentDashboardPage() {
               >
                 <div>
                   <h2 className="text-lg font-bold text-slate-800">{course.title}</h2>
-                  <p className="mt-1 text-sm text-slate-500">{course.course_code}</p>
+                  <p className="mt-1 text-sm text-slate-500">{course.courseCode}</p>
                 </div>
                 <button
                   type="button"
-                  disabled={!course.is_active}
+                  disabled={!course.isActive}
                   onClick={() => router.push(`/handraise/${course.id}`)}
                   className="rounded-xl bg-indigo-600 px-4 py-2 font-bold text-white disabled:bg-slate-300"
                 >
-                  {course.is_active ? "進入課程" : "尚未啟動"}
+                  {course.isActive ? "進入課程" : "尚未啟動"}
                 </button>
               </article>
             ))

@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { supabase } from "@/lib/supabase";
+import { clearBackendToken, getBackendApiBaseUrl, getBackendToken } from "@/lib/backend-auth";
 
 export default function ChangePasswordPage() {
   const router = useRouter();
@@ -14,37 +14,44 @@ export default function ChangePasswordPage() {
 
   useEffect(() => {
     const checkStatus = async () => {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-
-      if (!user) {
+      const token = getBackendToken();
+      if (!token) {
         router.replace("/");
         return;
       }
 
-      const { data: profile } = await supabase
-        .from("profiles")
-        .select("role, must_change_password")
-        .eq("id", user.id)
-        .single();
+      const response = await fetch(`${getBackendApiBaseUrl()}/auth/me`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        clearBackendToken();
+        router.replace("/");
+        return;
+      }
+      const json = (await response.json()) as {
+        user?: { role: "admin" | "teacher" | "student"; mustChangePassword: boolean };
+      };
+      const profile = json.user;
 
       if (!profile) {
+        clearBackendToken();
         router.replace("/");
         return;
       }
 
-      if (profile.role === "admin") {
+      if (profile.role === "admin" && !profile.mustChangePassword) {
         router.replace("/admin/dashboard");
         return;
       }
 
-      if (profile.role === "teacher") {
+      if (profile.role === "teacher" && !profile.mustChangePassword) {
         router.replace("/teacher/dashboard");
         return;
       }
 
-      if (!profile.must_change_password) {
+      if (profile.role === "student" && !profile.mustChangePassword) {
         router.replace("/student/dashboard");
       }
     };
@@ -69,48 +76,55 @@ export default function ChangePasswordPage() {
 
     setLoading(true);
 
-    const { error: passwordError } = await supabase.auth.updateUser({
-      password: newPassword,
+    const token = getBackendToken();
+    if (!token) {
+      setErrorMessage("登入狀態已失效，請重新登入。");
+      setLoading(false);
+      clearBackendToken();
+      router.replace("/");
+      return;
+    }
+
+    const updateResponse = await fetch(`${getBackendApiBaseUrl()}/auth/change-password`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        newPassword,
+      }),
     });
 
-    if (passwordError) {
+    if (!updateResponse.ok) {
       setErrorMessage("更新密碼失敗，請稍後重試。");
       setLoading(false);
       return;
     }
 
-    const {
-      data: { user },
-    } = await supabase.auth.getUser();
-
-    if (!user) {
-      setErrorMessage("更新成功，但登入狀態已失效，請重新登入。");
+    const meResponse = await fetch(`${getBackendApiBaseUrl()}/auth/me`, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+    if (!meResponse.ok) {
+      clearBackendToken();
+      router.replace("/");
       setLoading(false);
       return;
     }
-
-    const { error: profileError } = await supabase
-      .from("profiles")
-      .update({ must_change_password: false })
-      .eq("id", user.id);
-
-    if (profileError) {
-      setErrorMessage("密碼已更新，但狀態同步失敗，請聯絡老師。");
-      setLoading(false);
-      return;
-    }
+    const me = (await meResponse.json()) as {
+      user?: { role: "admin" | "teacher" | "student" };
+    };
 
     setSuccessMessage("密碼更新完成，將前往學生首頁。");
     setLoading(false);
 
-    setTimeout(async () => {
-      const { data: p } = await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single();
-      if (p?.role === "admin") {
+    setTimeout(() => {
+      if (me.user?.role === "admin") {
         router.push("/admin/dashboard");
+      } else if (me.user?.role === "teacher") {
+        router.push("/teacher/dashboard");
       } else {
         router.push("/student/dashboard");
       }

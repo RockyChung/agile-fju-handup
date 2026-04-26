@@ -19,6 +19,7 @@ async function getCourse(app: FastifyInstance, courseId: string) {
       courseCode: true,
       isActive: true,
       teacherId: true,
+      reportOrder: true,
     },
   });
 }

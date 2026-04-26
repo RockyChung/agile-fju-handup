@@ -37,6 +37,7 @@ model Course {
   title      String
   courseCode String   @map("course_code")
   isActive   Boolean  @default(false) @map("is_active")
+  reportOrder String[] @default([]) @map("report_order")
   teacherId  String   @map("teacher_id") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at")
 
