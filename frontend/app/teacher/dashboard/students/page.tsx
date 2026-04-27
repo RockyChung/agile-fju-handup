@@ -529,10 +529,11 @@ export default function TeacherStudentManagementPage() {
     }
 
     const json = (await response.json()) as { student?: StudentSearchRow };
-    if (json.student) {
+    const updatedStudent = json.student;
+    if (updatedStudent) {
       setSearchRows((prev) =>
         prev.map((item) =>
-          item.courseId === row.courseId && item.studentUserId === row.studentUserId ? json.student : item,
+          item.courseId === row.courseId && item.studentUserId === row.studentUserId ? updatedStudent : item,
         ),
       );
     }
