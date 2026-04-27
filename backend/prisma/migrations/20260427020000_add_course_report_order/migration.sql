@@ -1,0 +1,2 @@
+ALTER TABLE "courses"
+ADD COLUMN "report_order" TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
