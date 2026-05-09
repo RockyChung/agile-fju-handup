@@ -1,4 +1,4 @@
-import { Role } from "@prisma/client";
+import { Prisma, Role } from "@prisma/client";
 import bcrypt from "bcrypt";
 import { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
@@ -64,10 +64,74 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
 
     const existing = await app.prisma.user.findUnique({
       where: { studentId: payload.studentId },
-      select: { id: true },
+      select: {
+        id: true,
+        studentId: true,
+        email: true,
+        name: true,
+        role: true,
+        mustChangePassword: true,
+      },
     });
+
+    const enrollStudentIfNeeded = async (tx: Prisma.TransactionClient, studentId: string) => {
+      if (!payload.courseId) {
+        return;
+      }
+
+      const targetCourse = await tx.course.findUnique({
+        where: { id: payload.courseId },
+        select: { id: true, teacherId: true },
+      });
+
+      if (!targetCourse) {
+        throw new Error("COURSE_NOT_FOUND");
+      }
+      if (authUser.role === "teacher" && targetCourse.teacherId !== authUser.id) {
+        throw new Error("FORBIDDEN_COURSE");
+      }
+
+      await tx.courseStudent.upsert({
+        where: {
+          courseId_studentId: {
+            courseId: payload.courseId,
+            studentId,
+          },
+        },
+        update: {
+          groupName: payload.groupName ?? null,
+          isLeader: payload.isLeader ?? false,
+        },
+        create: {
+          courseId: payload.courseId,
+          studentId,
+          groupName: payload.groupName ?? null,
+          isLeader: payload.isLeader ?? false,
+        },
+      });
+    };
+
     if (existing) {
-      return reply.status(409).send({ message: "學號已存在" });
+      if (existing.role !== "student") {
+        return reply.status(409).send({ message: "學號已存在且非學生角色，無法加入課程" });
+      }
+
+      try {
+        await app.prisma.$transaction(async (tx) => {
+          await enrollStudentIfNeeded(tx, existing.id);
+        });
+
+        return reply.status(200).send({ user: existing, created: false });
+      } catch (error) {
+        if (error instanceof Error && error.message === "COURSE_NOT_FOUND") {
+          return reply.status(404).send({ message: "找不到課程" });
+        }
+        if (error instanceof Error && error.message === "FORBIDDEN_COURSE") {
+          return reply.status(403).send({ message: "不可加入非自己課程" });
+        }
+        request.log.error(error);
+        return reply.status(400).send({ message: "加入既有學生到課程失敗" });
+      }
     }
 
     const passwordHash = await bcrypt.hash(payload.password, 10);
@@ -93,43 +157,12 @@ export const userRoutes: FastifyPluginAsync = async (app) => {
           },
         });
 
-        if (payload.courseId) {
-          const targetCourse = await tx.course.findUnique({
-            where: { id: payload.courseId },
-            select: { id: true, teacherId: true },
-          });
-
-          if (!targetCourse) {
-            throw new Error("COURSE_NOT_FOUND");
-          }
-          if (authUser.role === "teacher" && targetCourse.teacherId !== authUser.id) {
-            throw new Error("FORBIDDEN_COURSE");
-          }
-
-          await tx.courseStudent.upsert({
-            where: {
-              courseId_studentId: {
-                courseId: payload.courseId,
-                studentId: createdUser.id,
-              },
-            },
-            update: {
-              groupName: payload.groupName ?? null,
-              isLeader: payload.isLeader ?? false,
-            },
-            create: {
-              courseId: payload.courseId,
-              studentId: createdUser.id,
-              groupName: payload.groupName ?? null,
-              isLeader: payload.isLeader ?? false,
-            },
-          });
-        }
+        await enrollStudentIfNeeded(tx, createdUser.id);
 
         return createdUser;
       });
 
-      return reply.status(201).send({ user });
+      return reply.status(201).send({ user, created: true });
     } catch (error) {
       if (error instanceof Error && error.message === "COURSE_NOT_FOUND") {
         return reply.status(404).send({ message: "找不到課程" });

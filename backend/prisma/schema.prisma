@@ -27,6 +27,8 @@ model User {
   taughtCourses  Course[]       @relation("TeacherCourses")
   courseStudents CourseStudent[]
   handRaises     HandRaise[]
+  scoreRecords   CourseScore[]
+  speakingCourses Course[]      @relation("CourseCurrentSpeaker")
 
   @@map("users")
   @@index([role], map: "idx_users_role")
@@ -39,11 +41,14 @@ model Course {
   isActive   Boolean  @default(false) @map("is_active")
   reportOrder String[] @default([]) @map("report_order")
   teacherId  String   @map("teacher_id") @db.Uuid
+  currentSpeakerId String? @map("current_speaker_id") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at")
 
   teacher    User            @relation("TeacherCourses", fields: [teacherId], references: [id], onDelete: Cascade)
+  currentSpeaker User?       @relation("CourseCurrentSpeaker", fields: [currentSpeakerId], references: [id], onDelete: SetNull)
   students   CourseStudent[]
   handRaises HandRaise[]
+  scores     CourseScore[]
 
   @@unique([teacherId, courseCode], map: "courses_teacher_id_course_code_key")
   @@index([teacherId], map: "idx_courses_teacher")
@@ -78,4 +83,19 @@ model HandRaise {
   @@unique([courseId, studentId], map: "hand_raises_course_id_student_id_key")
   @@index([courseId, createdAt], map: "idx_hand_raises_course_order")
   @@map("hand_raises")
+}
+
+model CourseScore {
+  id        String   @id @default(uuid()) @db.Uuid
+  courseId  String   @map("course_id") @db.Uuid
+  studentId String   @map("student_id") @db.Uuid
+  score     Int
+  awardedAt DateTime @default(now()) @map("awarded_at")
+
+  course  Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  student User   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([courseId, awardedAt], map: "idx_course_scores_course_day")
+  @@index([courseId, studentId, awardedAt], map: "idx_course_scores_course_student_day")
+  @@map("course_scores")
 }

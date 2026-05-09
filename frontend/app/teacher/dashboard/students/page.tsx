@@ -24,6 +24,7 @@ type BatchStudentRow = {
 type CreatedStudent = {
   id: string;
   studentId: string;
+  created: boolean;
 };
 
 type StudentSearchRow = {
@@ -246,13 +247,17 @@ export default function TeacherStudentManagementPage() {
 
     const createPayload = (await createResponse.json().catch(() => ({}))) as {
       message?: string;
-      user?: CreatedStudent;
+      user?: Omit<CreatedStudent, "created">;
+      created?: boolean;
     };
     if (!createResponse.ok || !createPayload.user) {
       throw new Error(createPayload.message || `建立學號 ${normalizedStudentId} 失敗。`);
     }
 
-    return createPayload.user;
+    return {
+      ...createPayload.user,
+      created: createPayload.created ?? true,
+    };
   };
 
   const parseExcelFile = async (file: File): Promise<BatchStudentRow[]> => {
@@ -351,7 +356,7 @@ export default function TeacherStudentManagementPage() {
 
     setSavingStudent(true);
     try {
-      await createStudentRecord({
+      const result = await createStudentRecord({
         studentIdValue: studentId,
         studentNameValue: studentName,
         passwordValue: defaultPassword,
@@ -364,7 +369,11 @@ export default function TeacherStudentManagementPage() {
       setStudentPassword("");
       setSingleGroupName("");
       setSingleIsLeader(false);
-      setSuccessMessage("學生建立完成，並已設定首次登入需改密碼。");
+      setSuccessMessage(
+        result.created
+          ? "學生建立完成，並已設定首次登入需改密碼。"
+          : "學生已存在，已加入課程並更新該課程分組資訊。",
+      );
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : "建立學生失敗。");
     } finally {
@@ -401,7 +410,8 @@ export default function TeacherStudentManagementPage() {
     }
 
     setImporting(true);
-    let successCount = 0;
+    let createdCount = 0;
+    let enrolledExistingCount = 0;
     const failedRows: string[] = [];
 
     for (const row of parsedRows) {
@@ -412,7 +422,7 @@ export default function TeacherStudentManagementPage() {
       }
 
       try {
-        await createStudentRecord({
+        const result = await createStudentRecord({
           studentIdValue: row.studentIdValue,
           studentNameValue: row.studentNameValue,
           passwordValue,
@@ -420,7 +430,11 @@ export default function TeacherStudentManagementPage() {
           groupName: row.groupNameValue,
           isLeader: row.isLeaderValue,
         });
-        successCount += 1;
+        if (result.created) {
+          createdCount += 1;
+        } else {
+          enrolledExistingCount += 1;
+        }
       } catch (error) {
         const reason = error instanceof Error ? error.message : "未知錯誤";
         failedRows.push(`${row.studentIdValue || "空白學號"}（${reason}）`);
@@ -429,9 +443,12 @@ export default function TeacherStudentManagementPage() {
 
     setImporting(false);
 
+    const successCount = createdCount + enrolledExistingCount;
     if (successCount > 0) {
       setSuccessMessage(
-        `批次匯入完成，共 ${successCount} 位成功，加入課程：${selectedBatchCourseLabel || "（未命名課程）"}`,
+        `批次匯入完成：新建 ${createdCount} 位、既有加入 ${enrolledExistingCount} 位，共 ${successCount} 位成功；加入課程：${
+          selectedBatchCourseLabel || "（未命名課程）"
+        }`,
       );
     } else {
       setSuccessMessage(null);
@@ -444,7 +461,9 @@ export default function TeacherStudentManagementPage() {
     }
 
     setErrorMessage(
-      `成功 ${successCount} 位，失敗 ${failedRows.length} 位：${failedRows.slice(0, 3).join("、")}${
+      `成功 ${successCount} 位（新建 ${createdCount} / 既有加入 ${enrolledExistingCount}），失敗 ${failedRows.length} 位：${failedRows
+        .slice(0, 3)
+        .join("、")}${
         failedRows.length > 3 ? " ..." : ""
       }`,
     );

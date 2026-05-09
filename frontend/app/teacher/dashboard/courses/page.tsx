@@ -2,7 +2,7 @@
 
 import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { getBackendApiBaseUrl, getBackendToken } from "@/lib/backend-auth";
+import { clearBackendToken, getBackendApiBaseUrl, getBackendToken } from "@/lib/backend-auth";
 import { useRequireTeacher } from "@/hooks/use-require-teacher";
 
 type TeacherCourse = {
@@ -50,40 +50,50 @@ export default function TeacherCourseManagementPage() {
     }
 
     setLoadingOrderGroups(true);
-    const response = await fetch(`${getBackendApiBaseUrl()}/courses/${courseId}/groups`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
+    try {
+      const response = await fetch(`${getBackendApiBaseUrl()}/courses/${courseId}/groups`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    if (!response.ok) {
-      setErrorMessage("讀取課程組別失敗，請稍後再試。");
-      setLoadingOrderGroups(false);
-      return;
-    }
-
-    const json = (await response.json()) as {
-      reportOrder?: string[];
-      groups?: CourseGroupRow[];
-    };
-
-    const groups = json.groups ?? [];
-    const reportOrder = json.reportOrder ?? [];
-    const groupMap = new Map(groups.map((group) => [group.groupName, group]));
-    const sortedGroups: CourseGroupRow[] = [];
-    for (const groupName of reportOrder) {
-      const target = groupMap.get(groupName);
-      if (target) {
-        sortedGroups.push(target);
-        groupMap.delete(groupName);
+      if (response.status === 401) {
+        clearBackendToken();
+        router.replace("/");
+        return;
       }
-    }
-    sortedGroups.push(...Array.from(groupMap.values()).sort((a, b) => a.groupName.localeCompare(b.groupName, "zh-Hant")));
 
-    setOrderingGroups(sortedGroups);
-    setLoadingOrderGroups(false);
-    setErrorMessage(null);
-  }, []);
+      if (!response.ok) {
+        setErrorMessage("讀取課程組別失敗，請稍後再試。");
+        return;
+      }
+
+      const json = (await response.json()) as {
+        reportOrder?: string[];
+        groups?: CourseGroupRow[];
+      };
+
+      const groups = json.groups ?? [];
+      const reportOrder = json.reportOrder ?? [];
+      const groupMap = new Map(groups.map((group) => [group.groupName, group]));
+      const sortedGroups: CourseGroupRow[] = [];
+      for (const groupName of reportOrder) {
+        const target = groupMap.get(groupName);
+        if (target) {
+          sortedGroups.push(target);
+          groupMap.delete(groupName);
+        }
+      }
+      sortedGroups.push(...Array.from(groupMap.values()).sort((a, b) => a.groupName.localeCompare(b.groupName, "zh-Hant")));
+
+      setOrderingGroups(sortedGroups);
+      setErrorMessage(null);
+    } catch {
+      setErrorMessage("讀取課程組別時無法連線到後端，請確認 API 網址與網路狀態。");
+    } finally {
+      setLoadingOrderGroups(false);
+    }
+  }, [router]);
 
   const fetchCourses = useCallback(async () => {
     const token = getBackendToken();
@@ -92,28 +102,56 @@ export default function TeacherCourseManagementPage() {
       return;
     }
 
-    const response = await fetch(`${getBackendApiBaseUrl()}/courses`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) {
-      setErrorMessage("讀取課程清單失敗，請稍後再試。");
-      return;
-    }
+    try {
+      const response = await fetch(`${getBackendApiBaseUrl()}/courses`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-    const json = (await response.json()) as { courses?: TeacherCourse[] };
-    const nextCourses = json.courses ?? [];
-    setCourses(nextCourses);
-    setSelectedOrderCourseId((prev) => {
-      const nextCourseId = prev || nextCourses[0]?.id || "";
-      if (nextCourseId) {
-        void fetchCourseGroups(nextCourseId);
+      if (response.status === 401) {
+        clearBackendToken();
+        router.replace("/");
+        return;
       }
-      return nextCourseId;
-    });
-    setErrorMessage(null);
-  }, [fetchCourseGroups]);
+
+      if (!response.ok) {
+        const err = (await response.json().catch(() => ({}))) as { message?: string };
+        if (response.status === 403) {
+          setErrorMessage("沒有權限讀取課程清單。");
+          return;
+        }
+        if (response.status >= 500) {
+          setErrorMessage(
+            "伺服器無法讀取課程資料。若剛部署後端，請在伺服器上執行 prisma migrate deploy，並確認資料庫已套用最新 migration。",
+          );
+          return;
+        }
+        setErrorMessage(
+          err.message
+            ? `讀取課程清單失敗：${err.message}`
+            : "讀取課程清單失敗，請稍後再試。",
+        );
+        return;
+      }
+
+      const json = (await response.json()) as { courses?: TeacherCourse[] };
+      const nextCourses = json.courses ?? [];
+      setCourses(nextCourses);
+      setSelectedOrderCourseId((prev) => {
+        const nextCourseId = prev || nextCourses[0]?.id || "";
+        if (nextCourseId) {
+          void fetchCourseGroups(nextCourseId);
+        }
+        return nextCourseId;
+      });
+      setErrorMessage(null);
+    } catch {
+      setErrorMessage(
+        "無法連線到後端 API。請確認後端服務已啟動，且前端環境變數 NEXT_PUBLIC_API_BASE_URL 指向正確網址（部署到 Vercel 時必須設定）。",
+      );
+    }
+  }, [fetchCourseGroups, router]);
 
   useEffect(() => {
     if (!teacherId) {

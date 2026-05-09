@@ -15,7 +15,12 @@ export function buildServer() {
     logger: true,
   });
 
-  const corsOrigin = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+  const corsOriginEnv = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+  const corsOrigins = corsOriginEnv
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const corsOrigin = corsOrigins.length <= 1 ? (corsOrigins[0] ?? "http://localhost:3000") : corsOrigins;
 
   void app.register(cors, {
     origin: corsOrigin,

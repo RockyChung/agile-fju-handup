@@ -11,6 +11,10 @@ type StudentCourse = {
   isActive: boolean;
 };
 
+type LoadCoursesOptions = {
+  silent?: boolean;
+};
+
 export default function StudentDashboardPage() {
   const router = useRouter();
   const [name, setName] = useState("同學");
@@ -18,17 +22,25 @@ export default function StudentDashboardPage() {
   const [courses, setCourses] = useState<StudentCourse[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const loadCourses = useCallback(async (token: string) => {
-    const response = await fetch(`${getBackendApiBaseUrl()}/courses`, {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-    if (!response.ok) {
-      return;
+  const loadCourses = useCallback(async (token: string, options?: LoadCoursesOptions) => {
+    const silent = options?.silent ?? false;
+    try {
+      const response = await fetch(`${getBackendApiBaseUrl()}/courses`, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        return;
+      }
+      const json = (await response.json()) as { courses?: StudentCourse[] };
+      setCourses(json.courses ?? []);
+    } catch {
+      if (!silent) {
+        // Initial load should fail gracefully without crashing the page.
+        setCourses([]);
+      }
     }
-    const json = (await response.json()) as { courses?: StudentCourse[] };
-    setCourses(json.courses ?? []);
   }, []);
 
   useEffect(() => {
@@ -99,7 +111,7 @@ export default function StudentDashboardPage() {
       if (!token) {
         return;
       }
-      void loadCourses(token);
+      void loadCourses(token, { silent: true });
     }, 2000);
 
     return () => {
