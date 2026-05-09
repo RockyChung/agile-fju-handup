@@ -37,7 +37,6 @@ export default function StudentDashboardPage() {
       setCourses(json.courses ?? []);
     } catch {
       if (!silent) {
-        // Initial load should fail gracefully without crashing the page.
         setCourses([]);
       }
     }

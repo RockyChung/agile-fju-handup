@@ -17,11 +17,14 @@ const reportOrderSchema = z.array(z.string().trim().min(1).max(80)).superRefine(
   }
 });
 
+const handRaiseModeSchema = z.enum(["individual", "group"]);
+
 const courseCreateSchema = z.object({
   title: z.string().trim().min(1, "title is required"),
   courseCode: z.string().trim().min(1, "courseCode is required"),
   isActive: z.boolean().optional().default(false),
   reportOrder: reportOrderSchema.optional().default([]),
+  handRaiseMode: handRaiseModeSchema.optional().default("individual"),
   teacherId: z.string().uuid().optional(),
 });
 
@@ -31,6 +34,7 @@ const courseUpdateSchema = z
     courseCode: z.string().trim().min(1).optional(),
     isActive: z.boolean().optional(),
     reportOrder: reportOrderSchema.optional(),
+    handRaiseMode: handRaiseModeSchema.optional(),
     teacherId: z.string().uuid().optional(),
   })
   .refine((payload) => Object.keys(payload).length > 0, {
@@ -127,6 +131,7 @@ export const courseRoutes: FastifyPluginAsync = async (app) => {
           courseCode: payload.courseCode,
           isActive: payload.isActive,
           reportOrder: payload.reportOrder,
+          handRaiseMode: payload.handRaiseMode,
           teacherId,
         },
       });
@@ -171,12 +176,14 @@ export const courseRoutes: FastifyPluginAsync = async (app) => {
       courseCode?: string;
       isActive?: boolean;
       reportOrder?: string[];
+      handRaiseMode?: "individual" | "group";
       teacherId?: string;
     } = {
       title: body.data.title,
       courseCode: body.data.courseCode,
       isActive: body.data.isActive,
       reportOrder: body.data.reportOrder,
+      handRaiseMode: body.data.handRaiseMode,
     };
 
     if (authUser.role === "admin" && body.data.teacherId) {
@@ -191,6 +198,12 @@ export const courseRoutes: FastifyPluginAsync = async (app) => {
     }
 
     try {
+      if (body.data.handRaiseMode === "individual") {
+        await app.prisma.courseGroupScoreRound.updateMany({
+          where: { courseId: params.data.id, status: "open" },
+          data: { status: "cancelled" },
+        });
+      }
       const course = await app.prisma.course.update({
         where: { id: params.data.id },
         data: updateData,

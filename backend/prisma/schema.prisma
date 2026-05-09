@@ -13,6 +13,17 @@ enum Role {
   student
 }
 
+enum HandRaiseMode {
+  individual
+  group
+}
+
+enum GroupScoreRoundStatus {
+  open
+  finalized
+  cancelled
+}
+
 model User {
   id                 String   @id @default(uuid()) @db.Uuid
   studentId          String   @unique @map("student_id")
@@ -29,6 +40,8 @@ model User {
   handRaises     HandRaise[]
   scoreRecords   CourseScore[]
   speakingCourses Course[]      @relation("CourseCurrentSpeaker")
+  groupScoreRoundsAsSpeaker CourseGroupScoreRound[] @relation("GroupScoreRoundSpeaker")
+  groupScoreLeaderVotes     CourseGroupScoreLeaderVote[]
 
   @@map("users")
   @@index([role], map: "idx_users_role")
@@ -40,6 +53,7 @@ model Course {
   courseCode String   @map("course_code")
   isActive   Boolean  @default(false) @map("is_active")
   reportOrder String[] @default([]) @map("report_order")
+  handRaiseMode HandRaiseMode @default(individual) @map("hand_raise_mode")
   teacherId  String   @map("teacher_id") @db.Uuid
   currentSpeakerId String? @map("current_speaker_id") @db.Uuid
   createdAt  DateTime @default(now()) @map("created_at")
@@ -48,7 +62,9 @@ model Course {
   currentSpeaker User?       @relation("CourseCurrentSpeaker", fields: [currentSpeakerId], references: [id], onDelete: SetNull)
   students   CourseStudent[]
   handRaises HandRaise[]
-  scores     CourseScore[]
+  scores      CourseScore[]
+  groupScores CourseGroupScore[]
+  groupScoreRounds CourseGroupScoreRound[]
 
   @@unique([teacherId, courseCode], map: "courses_teacher_id_course_code_key")
   @@index([teacherId], map: "idx_courses_teacher")
@@ -98,4 +114,53 @@ model CourseScore {
   @@index([courseId, awardedAt], map: "idx_course_scores_course_day")
   @@index([courseId, studentId, awardedAt], map: "idx_course_scores_course_student_day")
   @@map("course_scores")
+}
+
+model CourseGroupScoreRound {
+  id               String                @id @default(uuid()) @db.Uuid
+  courseId         String                @map("course_id") @db.Uuid
+  speakerStudentId String                @map("speaker_student_id") @db.Uuid
+  teacherScore     Int?                  @map("teacher_score")
+  status           GroupScoreRoundStatus @default(open)
+  createdAt        DateTime              @default(now()) @map("created_at")
+  finalizedAt      DateTime?             @map("finalized_at")
+
+  course      Course                       @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  speaker     User                         @relation("GroupScoreRoundSpeaker", fields: [speakerStudentId], references: [id], onDelete: Cascade)
+  leaderVotes CourseGroupScoreLeaderVote[]
+  result      CourseGroupScore?
+
+  @@index([courseId, status], map: "idx_group_score_rounds_course_status")
+  @@map("course_group_score_rounds")
+}
+
+model CourseGroupScore {
+  id               String   @id @default(uuid()) @db.Uuid
+  courseId         String   @map("course_id") @db.Uuid
+  roundId          String?  @unique @map("round_id") @db.Uuid
+  groupKey         String   @map("group_key")
+  groupDisplayName String   @map("group_display_name")
+  score            Int
+  awardedAt        DateTime @default(now()) @map("awarded_at")
+
+  course Course                 @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  round  CourseGroupScoreRound? @relation(fields: [roundId], references: [id], onDelete: SetNull)
+
+  @@index([courseId, awardedAt], map: "idx_course_group_scores_course_day")
+  @@index([courseId, groupKey], map: "idx_course_group_scores_course_group")
+  @@map("course_group_scores")
+}
+
+model CourseGroupScoreLeaderVote {
+  id        String   @id @default(uuid()) @db.Uuid
+  roundId   String   @map("round_id") @db.Uuid
+  leaderId  String   @map("leader_id") @db.Uuid
+  score     Int
+  createdAt DateTime @default(now()) @map("created_at")
+
+  round  CourseGroupScoreRound @relation(fields: [roundId], references: [id], onDelete: Cascade)
+  leader User                  @relation(fields: [leaderId], references: [id], onDelete: Cascade)
+
+  @@unique([roundId, leaderId], map: "group_score_leader_vote_round_leader_key")
+  @@map("course_group_score_leader_votes")
 }

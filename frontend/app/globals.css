@@ -24,3 +24,40 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* 分組模式：老師開課頁與學生舉手頁共用 */
+.session-group-dark {
+  min-height: 100vh;
+  background-color: #020617;
+  color: #f1f5f9;
+}
+.session-group-dark .g-panel {
+  border-radius: 1rem;
+  border: 1px solid rgb(51 65 85);
+  background-color: rgb(15 23 42);
+}
+.session-group-dark .g-panel-dashed {
+  border-radius: 1rem;
+  border: 1px dashed rgb(71 85 105);
+  background-color: rgb(15 23 42);
+}
+.session-group-dark .g-muted {
+  color: rgb(148 163 184);
+}
+.session-group-dark .g-heading {
+  color: #f8fafc;
+}
+.session-group-dark .g-border-btn {
+  border-color: rgb(71 85 105);
+  color: rgb(226 232 240);
+}
+.session-group-dark .g-modal {
+  background-color: rgb(15 23 42);
+  color: #f1f5f9;
+  border: 1px solid rgb(51 65 85);
+}
+.session-group-dark .g-input {
+  background-color: rgb(30 41 59);
+  border-color: rgb(71 85 105);
+  color: #f8fafc;
+}
