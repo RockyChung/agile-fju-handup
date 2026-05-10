@@ -29,6 +29,14 @@ export function buildServer() {
     allowedHeaders: ["Content-Type", "Authorization"],
   });
 
+  // Render / browser often request `/` and `/favicon.ico`; this API has no static site.
+  app.get("/", async () => ({
+    ok: true,
+    service: "agile-fju-handup-backend",
+    message: "API is running. Frontend is a separate deployment; use /auth, /courses, etc.",
+  }));
+  app.get("/favicon.ico", async (_request, reply) => reply.status(204).send());
+
   void app.register(prismaPlugin);
   void app.register(authPlugin);
   void app.register(healthRoutes, { prefix: "/health" });
